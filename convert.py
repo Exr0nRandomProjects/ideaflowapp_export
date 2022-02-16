@@ -1,3 +1,9 @@
+FILENAME = "../../Downloads/personal-2022-2-15.if"
+OUTPUT_DIR = f"{path.basename(FILENAME)}export"
+
+
+
+
 from tqdm import tqdm
 
 import requests # to get image from the web
@@ -7,10 +13,6 @@ import json
 from os import path, mkdir
 from datetime import datetime
 
-FILENAME = "../../Downloads/personal-2022-2-15.if"
-
-# OUTPUT_DIR = f"{path.basename(FILENAME)}export"
-OUTPUT_DIR = f"/Users/albhuan/a1oh/ideaflow"
 mkdir(OUTPUT_DIR)
 
 class ImageDownloadQueue:

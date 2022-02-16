@@ -1,0 +1,9 @@
+certifi==2021.10.8
+charset-normalizer==2.0.12
+idna==3.3
+meson==0.61.1
+Pillow==9.0.1
+pybind11==2.9.0
+requests==2.27.1
+tqdm==4.62.3
+urllib3==1.26.8
