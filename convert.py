@@ -27,15 +27,16 @@ class ImageDownloadQueue:
     def push(self, url, filename):
         self.download_queue.append((url, filename))
     def download(self):
-        url, filename = self.download_queue.pop(0)
-        r = requests.get(url, stream=True)
-        if r.status_code == 200:
-            r.raw.decode_content = True
-            with open(f"{self.output_dir}/{filename}", 'wb') as wf:
-                shutil.copyfileobj(r.raw, wf)
-            yield (True, filename)
-        else:
-            yield (False, filename)
+        while len(self.download_queue):
+            url, filename = self.download_queue.pop(0)
+            r = requests.get(url, stream=True)
+            if r.status_code == 200:
+                r.raw.decode_content = True
+                with open(f"{self.output_dir}/{filename}", 'wb') as wf:
+                    shutil.copyfileobj(r.raw, wf)
+                yield (True, filename)
+            else:
+                yield (False, filename)
 
 
 def convert(flow, rich_content=False, frontmater_ignore=[]):
@@ -43,62 +44,77 @@ def convert(flow, rich_content=False, frontmater_ignore=[]):
         fm = { k: v for k, v in dict.items() if k not in ignore_keys and (filter_none and v is not None) }
         return "---\n" + '\n'.join(f'{k}: {v}' for k, v in fm.items()) + "\n---\n"
 
-    def serialize_tok(tok, img_downloader):
-        ret = ''
-        print(tok)
+    def serialize_tok(tok, img_downloader, depth=-1):
+        ret = []
         match tok['type']:
-            case 'paragraph' | 'list' | 'listItem':
-                for child in tok['content']:
-                    ret += serialize_tok(child, img_downloader)
-                ret += '\n'
+            case 'listItem':
+                ret.append('\t'*(int(tok['depth']) if tok['depth'] is not None else 0) + '- ' + ''.join(
+                        ''.join(serialize_tok(child, img_downloader, depth=depth+1))
+                        for child in tok['content']
+                    ))
+            case 'paragraph' | 'list':
+                # ret.append('    '*depth + ''.join(
+                ret.append(''.join(
+                        ''.join(serialize_tok(child, img_downloader, depth=depth))
+                        for child in tok['content']
+                    ) + '\n')
             case 'codeblock':
-                ret += '```'
-                for child in tok['content']:
-                    ret += serialize_tok(child, img_downloader)
-                ret += '\n```\n'
+                # ret.append('    '*depth + '```' +
+                ret.append('```' +
+                    '\n'.join(
+                        ''.join(serialize_tok(child, img_downloader, depth=depth))
+                        for child in tok['content'])
+                + '\n```\n')
             case 'spaceship':
                 if tok['linkedNoteId'] is not None:
-                    ret += '[' + tok['linkedNoteId'] + ']'
+                    # ret.append('[[ife_' + tok['linkedNoteId'] + ']]')
+                    try:
+                        link_slug = flow['notes'][tok['linkedNoteId']]['asText'].split('\n')[0]
+                    except KeyError:
+                        link_slug = "(unknown note '{tok['linkedNoteId']}')"
+                    ret.append(f"[{link_slug}](ife_{tok['linkedNoteId']}) ")
             case 'text':
-                ret += tok['content']
+                ret.append(tok['content'])
             case 'hashtag':
-                ret += tok['content'].replace('*', '/')
+                ret.append(tok['content'].replace('*', '/'))
             case 'image':
                 fname = path.basename(tok['src'])
                 img_downloader(tok['src'], fname)
                 size_text = "" if tok['width'] is None else f" ={tok['width']}x"
-                ret += f"![(image)](./{fname}{size_text})"
+                ret.append(f"![(image)](./{fname}{size_text})")
             case 'checkbox':
-                ret += f"[{'x' if tok['isChecked'] else ' '}]"
+                ret.append("[{'x' if tok['isChecked'] else ' '}]")
             case 'link':
-                ret += f"[{tok['slug']}]({tok['content']})"
+                ret.append(f"[{tok['slug']}]({tok['content']})")
             case _:
                 raise NotImplementedError(f"node type {tok['type']} is not implemented")
 
         # if 'children' in note:
         #     for child in note['children']:
         #         ret += serialize_note(child)
-        return ret
+        return ['    ' * max(depth, 0) + x for x in ret]
 
     downloader = ImageDownloadQueue(OUTPUT_DIR)
 
     notes = flow['notes']
     print(f"found {len(notes.keys())} notes...")
     for id, note in tqdm(notes.items()):
-        if id != 'atM8UbNuFh': continue
+        # if id != 'atM8UbNuFh': continue
         if rich_content == True:
             # raise NotImplementedError("TODO: implement recursive traversal to extract rich content")
-            output = ''.join(serialize_tok(tok, img_downloader=downloader.push) for tok in note['tokens'])
+            output = ''.join(''.join(serialize_tok(tok, img_downloader=downloader.push)) for tok in note['tokens'])
         else:
             output = note['asText']
 
-        print(note['asText'])
+        # print(json.dumps(note['tokens'], indent=4))
+        # print(note['asText'])
+        # print(output)
 
-        with open(f"{OUTPUT_DIR}/{id}.md", 'w') as wf:
-            wf.write(generate_frontmatter(note) + note['asText'])
+        with open(f"{OUTPUT_DIR}/ife_{id}.md", 'w') as wf:
+            wf.write(generate_frontmatter(note) + output)
 
     print(f"downloading {len(downloader)} images...")
-    for res, fname in tqdm(downloader.download()):
+    for res, fname in tqdm(downloader.download(), total=len(downloader)):
         if not res: print(f"downloading {fname} failed!")
 
 if __name__ == '__main__':
