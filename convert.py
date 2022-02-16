@@ -9,10 +9,9 @@ from datetime import datetime
 
 FILENAME = "../../Downloads/personal-2022-2-15.if"
 
-# OUTPUT_DIR = f"{path.basename(FILENAME)}export-{datetime.now()}"
 # OUTPUT_DIR = f"{path.basename(FILENAME)}export"
 OUTPUT_DIR = f"/Users/albhuan/a1oh/ideaflow"
-# mkdir(OUTPUT_DIR) # TODO: add back
+mkdir(OUTPUT_DIR)
 
 class ImageDownloadQueue:
     def __init__(self, output_dir: str):
@@ -39,7 +38,7 @@ class ImageDownloadQueue:
                 yield (False, filename)
 
 
-def convert(flow, rich_content=False, frontmater_ignore=[]):
+def convert(flow, rich_content=True, frontmater_ignore=[]):
     def generate_frontmatter(dict, ignore_keys=['tokens', 'asText'] + frontmater_ignore, filter_none=True):
         fm = { k: v for k, v in dict.items() if k not in ignore_keys and (filter_none and v is not None) }
         return "---\n" + '\n'.join(f'{k}: {v}' for k, v in fm.items()) + "\n---\n"
@@ -53,13 +52,11 @@ def convert(flow, rich_content=False, frontmater_ignore=[]):
                         for child in tok['content']
                     ))
             case 'paragraph' | 'list':
-                # ret.append('    '*depth + ''.join(
                 ret.append(''.join(
                         ''.join(serialize_tok(child, img_downloader, depth=depth))
                         for child in tok['content']
                     ) + '\n')
             case 'codeblock':
-                # ret.append('    '*depth + '```' +
                 ret.append('```' +
                     '\n'.join(
                         ''.join(serialize_tok(child, img_downloader, depth=depth))
@@ -67,7 +64,7 @@ def convert(flow, rich_content=False, frontmater_ignore=[]):
                 + '\n```\n')
             case 'spaceship':
                 if tok['linkedNoteId'] is not None:
-                    # ret.append('[[ife_' + tok['linkedNoteId'] + ']]')
+                    # ret.append('[[ife_' + tok['linkedNoteId'] + ']]') # use wikilinks
                     try:
                         link_slug = flow['notes'][tok['linkedNoteId']]['asText'].split('\n')[0]
                     except KeyError:
@@ -89,9 +86,6 @@ def convert(flow, rich_content=False, frontmater_ignore=[]):
             case _:
                 raise NotImplementedError(f"node type {tok['type']} is not implemented")
 
-        # if 'children' in note:
-        #     for child in note['children']:
-        #         ret += serialize_note(child)
         return ['    ' * max(depth, 0) + x for x in ret]
 
     downloader = ImageDownloadQueue(OUTPUT_DIR)
@@ -99,9 +93,7 @@ def convert(flow, rich_content=False, frontmater_ignore=[]):
     notes = flow['notes']
     print(f"found {len(notes.keys())} notes...")
     for id, note in tqdm(notes.items()):
-        # if id != 'atM8UbNuFh': continue
         if rich_content == True:
-            # raise NotImplementedError("TODO: implement recursive traversal to extract rich content")
             output = ''.join(''.join(serialize_tok(tok, img_downloader=downloader.push)) for tok in note['tokens'])
         else:
             output = note['asText']
@@ -122,7 +114,6 @@ if __name__ == '__main__':
         flow = json.loads(rf.read())
 
     if flow['version'] == 16:
-        # convert(flow, frontmater_ignore=['position', 'authorId', 'readAll', 'insertedAt'])
-        convert(flow, rich_content=True)
+        convert(flow, frontmater_ignore=['position', 'authorId', 'readAll', 'insertedAt'])
     else:
         raise NotImplementedError(f"not implemented for ideaflow version {flow['version']}")
